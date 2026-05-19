@@ -78,8 +78,8 @@ def main(args):
                                          device=device, dtype=dtype)
 
     ## 2. load the data and preprocess
-    data_dir = "datasets/eval"
-    anno_path = "datasets/eval/videogen-rewardbench.csv"
+    data_dir = "datasets"
+    anno_path = "datasets/videogen-rewardbench.csv"
     out_dir = "videogen-rewardbench-output"
     os.makedirs(out_dir, exist_ok=True)
 
