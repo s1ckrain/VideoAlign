@@ -45,10 +45,12 @@ _DEFAULT_PRESET_KEY = "1.3B"
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate Wan2.1 videos for reward-model validation.")
-    p.add_argument("--prompts_file", required=True,
-                   help="Plain .txt (one prompt per line) or .jsonl with {'prompt': ...}")
-    p.add_argument("--output_dir", required=True,
-                   help="Output root. Videos -> {out}/videos, metadata -> {out}/videos_meta.csv")
+    p.add_argument("--prompts_file", default="prompts.txt",
+                   help="Plain .txt (one prompt per line) or .jsonl with {'prompt': ...}. "
+                        "Default: prompts.txt (next to this script).")
+    p.add_argument("--output_dir", default="outputs",
+                   help="Output root. Videos -> {out}/videos, metadata -> {out}/videos_meta.csv. "
+                        "Default: outputs/")
     p.add_argument("--model_name", default="/aigc/posttrain/siyuanfu/models/Wan2.1",
                    help="HF model id (e.g. Wan-AI/Wan2.1-T2V-1.3B-Diffusers) "
                         "OR local diffusers path. Default: local 1.3B at "

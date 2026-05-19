@@ -42,8 +42,9 @@ from tqdm import tqdm
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Score Wan-generated videos with VideoReward.")
-    p.add_argument("--videos_meta", required=True,
-                   help="CSV produced by Phase A (must contain `video_path`, `prompt`).")
+    p.add_argument("--videos_meta", default="outputs/videos_meta.csv",
+                   help="CSV produced by Phase A (must contain `video_path`, `prompt`). "
+                        "Default: outputs/videos_meta.csv")
     p.add_argument("--videoalign_dir", default="..",
                    help="Path to KwaiVGI VideoAlign repo root (provides `inference.py`). "
                         "Defaults to '..' since this script lives at VideoAlign/wan_eval/.")

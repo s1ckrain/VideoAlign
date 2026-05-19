@@ -40,11 +40,14 @@ import pandas as pd
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Compute pointwise + pairwise reward-model accuracy on Wan2.1 distribution.")
-    p.add_argument("--reward_scores", required=True)
-    p.add_argument("--human_pointwise", default=None,
-                   help="Filled-in human_pointwise.csv. If omitted, pointwise metrics are skipped.")
-    p.add_argument("--human_pairwise", default=None,
-                   help="Filled-in human_pairwise.csv. If omitted, pairwise metrics are skipped.")
+    p.add_argument("--reward_scores", default="outputs/reward_scores.csv",
+                   help="CSV from Phase B. Default: outputs/reward_scores.csv")
+    p.add_argument("--human_pointwise", default="outputs/human_pointwise.csv",
+                   help="Filled-in human_pointwise.csv. Set to empty string '' to skip pointwise. "
+                        "Default: outputs/human_pointwise.csv")
+    p.add_argument("--human_pairwise", default="outputs/human_pairwise.csv",
+                   help="Filled-in human_pairwise.csv. Set to empty string '' to skip pairwise. "
+                        "Default: outputs/human_pairwise.csv")
     p.add_argument("--videoalign_dir", default="..",
                    help="Path to VideoAlign repo root (uses its calc_accuracy.py for parity). "
                         "Defaults to '..' since this script lives at VideoAlign/wan_eval/.")
@@ -318,16 +321,24 @@ def main() -> None:
     _key = (coefs["vq_coef"], coefs["mq_coef"], coefs["ta_coef"])
     print(f"[acc] composite coefs: {coefs}  -- {_presets.get(_key, 'custom')}")
 
+    # Treat missing file (or empty string) as "skip this metric" instead of crashing.
+    has_pw = bool(args.human_pointwise) and Path(args.human_pointwise).exists()
+    has_pair = bool(args.human_pairwise) and Path(args.human_pairwise).exists()
+    if args.human_pointwise and not has_pw:
+        print(f"[acc] WARN: --human_pointwise={args.human_pointwise} not found, skipping pointwise.")
+    if args.human_pairwise and not has_pair:
+        print(f"[acc] WARN: --human_pairwise={args.human_pairwise} not found, skipping pairwise.")
+
     report: dict = {
         "source": {
             "reward_scores":   str(Path(args.reward_scores).resolve()),
-            "human_pointwise": str(Path(args.human_pointwise).resolve()) if args.human_pointwise else None,
-            "human_pairwise":  str(Path(args.human_pairwise).resolve())  if args.human_pairwise  else None,
+            "human_pointwise": str(Path(args.human_pointwise).resolve()) if has_pw   else None,
+            "human_pairwise":  str(Path(args.human_pairwise).resolve())  if has_pair else None,
         },
         "composite_coefs": coefs,
     }
 
-    if args.human_pointwise:
+    if has_pw:
         human_pw = pd.read_csv(args.human_pointwise)
         report["pointwise"] = compute_pointwise(reward_df, human_pw, dims=dims, coefs=coefs)
         rows = [("dim", "Spearman", "Pearson", "Kendall", "Top-1/prompt")]
@@ -343,7 +354,7 @@ def main() -> None:
             ))
         _print_table(f"Pointwise (N videos = {report['pointwise']['n_videos']})", rows)
 
-    if args.human_pairwise:
+    if has_pair:
         human_pair = pd.read_csv(args.human_pairwise)
         videoalign_dir = Path(args.videoalign_dir).resolve()
         if not (videoalign_dir / "calc_accuracy.py").exists():

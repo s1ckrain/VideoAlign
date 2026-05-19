@@ -36,8 +36,9 @@ import pandas as pd
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Build pointwise + pairwise annotation templates.")
-    p.add_argument("--reward_scores", required=True,
-                   help="CSV from Phase B; we only need prompt_id/video_id/prompt/video_path columns.")
+    p.add_argument("--reward_scores", default="outputs/reward_scores.csv",
+                   help="CSV from Phase B; we only need prompt_id/video_id/prompt/video_path columns. "
+                        "Default: outputs/reward_scores.csv")
     p.add_argument("--output_dir", default=None,
                    help="Where to write the two CSVs. Defaults to dir of --reward_scores.")
     p.add_argument("--pairs_per_prompt", default="1",
