@@ -94,12 +94,14 @@ cd /aigc/posttrain/siyuanfu/VideoAlign/wan_eval
 python generate.py \
     --prompts_file prompts.txt \
     --output_dir outputs \
-    --model_name Wan-AI/Wan2.1-T2V-1.3B-Diffusers \
     --gpu 0
+    # --model_name 默认 = /aigc/posttrain/siyuanfu/models/Wan2.1 (本地路径，1.3B preset)
+    # 想跑 14B：--model_name /path/to/Wan2.1-14B  (自动按 "14B" 子串切 preset)
+    # 也支持 HF id：--model_name Wan-AI/Wan2.1-T2V-1.3B-Diffusers
 ```
 
 **会发生：**
-- 加载 Wan2.1-T2V-1.3B（首次会从 HF 下载）
+- 从本地路径加载 Wan2.1-T2V-1.3B
 - 对 20 条 prompt 各生成 2 个视频（不同 seed）→ 共 40 个视频
 - 1.3B + A100：约 **20-30 分钟**
 - 中途断了可以直接重跑，**已生成的会跳过**（resume 模式）

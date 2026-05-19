@@ -28,17 +28,19 @@ from diffusers.utils import export_to_video
 
 
 # ---- Recommended config presets per model ------------------------------------
-# (height, width, num_frames, fps, flow_shift, num_inference_steps)
+# Keyed by an identifier substring; resolve_gen_kwargs() picks a preset by
+# fuzzy-matching the substring against --model_name (HF id OR local path).
 MODEL_PRESETS = {
-    "Wan-AI/Wan2.1-T2V-1.3B-Diffusers": dict(
+    "1.3B": dict(
         height=480, width=832, num_frames=49, fps=15,
         num_inference_steps=30, guidance_scale=5.0,
     ),
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers": dict(
+    "14B": dict(
         height=480, width=832, num_frames=49, fps=15,
         num_inference_steps=40, guidance_scale=5.0,
     ),
 }
+_DEFAULT_PRESET_KEY = "1.3B"
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,8 +49,13 @@ def parse_args() -> argparse.Namespace:
                    help="Plain .txt (one prompt per line) or .jsonl with {'prompt': ...}")
     p.add_argument("--output_dir", required=True,
                    help="Output root. Videos -> {out}/videos, metadata -> {out}/videos_meta.csv")
-    p.add_argument("--model_name", default="Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
-                   help="HF model id or local path.")
+    p.add_argument("--model_name", default="/aigc/posttrain/siyuanfu/models/Wan2.1",
+                   help="HF model id (e.g. Wan-AI/Wan2.1-T2V-1.3B-Diffusers) "
+                        "OR local diffusers path. Default: local 1.3B at "
+                        "/aigc/posttrain/siyuanfu/models/Wan2.1")
+    p.add_argument("--preset_key", default=None, choices=[None, "1.3B", "14B"],
+                   help="Force a generation preset. If omitted, inferred from --model_name "
+                        "(substring match on '1.3B' / '14B'); fallback = 1.3B.")
     p.add_argument("--num_seeds", type=int, default=2,
                    help="K = videos per prompt (need >=2 to enable pairwise comparison). "
                         "Default 2 keeps annotation workload small (20 prompts -> 40 videos).")
@@ -93,7 +100,19 @@ def load_prompts(path: str) -> list[str]:
 
 
 def resolve_gen_kwargs(args: argparse.Namespace) -> dict:
-    preset = MODEL_PRESETS.get(args.model_name, MODEL_PRESETS["Wan-AI/Wan2.1-T2V-1.3B-Diffusers"])
+    # Pick preset: explicit > substring on model_name > fallback (1.3B).
+    if args.preset_key is not None:
+        preset_key = args.preset_key
+    else:
+        preset_key = next(
+            (k for k in MODEL_PRESETS if k in args.model_name),
+            _DEFAULT_PRESET_KEY,
+        )
+    if preset_key not in MODEL_PRESETS:
+        raise ValueError(f"unknown preset_key={preset_key}, available: {list(MODEL_PRESETS)}")
+    print(f"[gen] using preset '{preset_key}' for model_name='{args.model_name}'")
+    preset = MODEL_PRESETS[preset_key]
+
     merged = dict(preset)
     for k in ("num_inference_steps", "guidance_scale", "height", "width", "num_frames", "fps"):
         v = getattr(args, k)
