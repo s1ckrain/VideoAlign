@@ -240,6 +240,10 @@ def _read_video_decord(
     """
     import decord
     video_path = ele["video"]
+    # decord does not parse `file://` URIs; strip the scheme so it falls back to
+    # a plain local path (mirrors the torchvision branch above).
+    if isinstance(video_path, str) and video_path.startswith("file://"):
+        video_path = video_path[7:]
     st = time.time()
     vr = decord.VideoReader(video_path)
     # TODO: support start_pts and end_pts
