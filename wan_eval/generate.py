@@ -49,8 +49,9 @@ def parse_args() -> argparse.Namespace:
                    help="Output root. Videos -> {out}/videos, metadata -> {out}/videos_meta.csv")
     p.add_argument("--model_name", default="Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
                    help="HF model id or local path.")
-    p.add_argument("--num_seeds", type=int, default=4,
-                   help="K = videos per prompt (need >=2 to enable pairwise comparison).")
+    p.add_argument("--num_seeds", type=int, default=2,
+                   help="K = videos per prompt (need >=2 to enable pairwise comparison). "
+                        "Default 2 keeps annotation workload small (20 prompts -> 40 videos).")
     p.add_argument("--seed_base", type=int, default=42,
                    help="seed for prompt_i, seed_j = seed_base + j (so each prompt sees the same K seeds).")
     p.add_argument("--gpu", type=int, default=0)

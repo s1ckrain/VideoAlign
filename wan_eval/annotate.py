@@ -12,13 +12,17 @@ Outputs two CSVs (Excel/WPS friendly) for the annotators to fill in:
             human_VQ, human_MQ, human_TA
    - human_* fields should be filled with one of: 'A' / 'B' / 'same'
 
-Pairs are formed WITHIN each prompt: all C(K, 2) combinations of the K seeds.
+Pair construction (within each prompt's K seeds):
+  - default (--pairs_per_prompt 1): randomly pick ONE pair per prompt
+    -> 20 prompts x 1 pair = 20 rows total (minimal annotation workload)
+  - --pairs_per_prompt N: pick N distinct random pairs per prompt (capped at C(K,2))
+  - --pairs_per_prompt all: all C(K, 2) combinations per prompt (legacy behaviour)
 
 Usage (run from inside VideoAlign/wan_eval/):
     python annotate.py \
         --reward_scores outputs/reward_scores.csv \
-        --output_dir outputs \
-        [--pair_sample 100]            # sample at most 100 pairs total
+        --output_dir outputs
+        # default: 1 pair per prompt -> ~20 pairs for the default 20 prompts
 """
 from __future__ import annotations
 
@@ -36,10 +40,28 @@ def parse_args() -> argparse.Namespace:
                    help="CSV from Phase B; we only need prompt_id/video_id/prompt/video_path columns.")
     p.add_argument("--output_dir", default=None,
                    help="Where to write the two CSVs. Defaults to dir of --reward_scores.")
+    p.add_argument("--pairs_per_prompt", default="1",
+                   help="Pairs per prompt. Either an integer (>=1) or 'all' for C(K,2). Default '1'.")
     p.add_argument("--pair_sample", type=int, default=None,
-                   help="If set, randomly sample at most N pairs (uniform across prompts).")
+                   help="(Optional) Global cap on the total number of pairs after per-prompt selection.")
     p.add_argument("--seed", type=int, default=0, help="Random seed for pair sampling.")
     return p.parse_args()
+
+
+def _select_pairs_for_group(ids: list[str], pairs_per_prompt: str, rng: random.Random) -> list[tuple[str, str]]:
+    """Pick the pairs for one prompt according to `--pairs_per_prompt`."""
+    all_pairs = list(itertools.combinations(ids, 2))
+    if pairs_per_prompt == "all":
+        return all_pairs
+    try:
+        n = int(pairs_per_prompt)
+    except ValueError as e:
+        raise ValueError(f"--pairs_per_prompt must be 'all' or an integer, got '{pairs_per_prompt}'") from e
+    if n <= 0:
+        raise ValueError("--pairs_per_prompt must be >= 1 (or 'all').")
+    if n >= len(all_pairs):
+        return all_pairs
+    return rng.sample(all_pairs, n)
 
 
 def main() -> None:
@@ -61,13 +83,14 @@ def main() -> None:
     print(f"[anno] pointwise template -> {pw_path}  ({len(pw)} rows)")
 
     # ---- pairwise template --------------------------------------------------
-    pair_rows = []
+    rng = random.Random(args.seed)
+    pair_rows: list[dict] = []
     pair_id = 0
     for prompt_id, group in df.groupby("prompt_id"):
         ids = group["video_id"].tolist()
         paths = dict(zip(group["video_id"], group["video_path"]))
         prompt = group["prompt"].iloc[0]
-        for a, b in itertools.combinations(ids, 2):
+        for a, b in _select_pairs_for_group(ids, args.pairs_per_prompt, rng):
             pair_rows.append({
                 "pair_id": pair_id,
                 "prompt_id": int(prompt_id),
@@ -83,7 +106,6 @@ def main() -> None:
             pair_id += 1
 
     if args.pair_sample and args.pair_sample < len(pair_rows):
-        rng = random.Random(args.seed)
         pair_rows = rng.sample(pair_rows, args.pair_sample)
         for i, r in enumerate(pair_rows):
             r["pair_id"] = i
