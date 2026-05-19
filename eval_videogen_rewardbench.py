@@ -4,6 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import json
 import glob
+import argparse
 import pandas as pd
 from tqdm import tqdm
 
@@ -11,6 +12,15 @@ import torch
 
 from inference import VideoVLMRewardInference
 from calc_accuracy import calc_accuracy_with_ties, calc_accuracy_without_ties
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Eval VideoReward on VideoGen-RewardBench")
+    parser.add_argument(
+        "--gpu", type=int, default=0,
+        help="CUDA device index to run inference on (e.g. 0, 1, 2, ...).",
+    )
+    return parser.parse_args()
 
 
 def convert_pair_to_single(df_pair_anno):
@@ -48,12 +58,21 @@ def convert_single_to_pair(df_pair_anno, df_single_pred):
     return df_pair_anno
     
 
-def main():
+def main(args):
     ## 1. load the model
     load_from_pretrained = "./checkpoints"
 
-    device = torch.device("cuda:0")
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available; this script requires a GPU.")
+    num_gpus = torch.cuda.device_count()
+    if args.gpu < 0 or args.gpu >= num_gpus:
+        raise ValueError(
+            f"--gpu={args.gpu} is out of range; only {num_gpus} CUDA device(s) visible."
+        )
+    torch.cuda.set_device(args.gpu)
+    device = torch.device(f"cuda:{args.gpu}")
     dtype = torch.bfloat16
+    print(f"[eval] Using device: {device} ({torch.cuda.get_device_name(args.gpu)})")
 
     inferencer = VideoVLMRewardInference(load_from_pretrained, 
                                          device=device, dtype=dtype)
@@ -142,6 +161,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args)
 
 

@@ -4,3 +4,8 @@ wandb
 debug.sh
 _temp_videos
 anno
+
+# Local-only model weights and benchmark data (pulled via git-lfs, do not commit)
+checkpoints/
+datasets/
+videogen-rewardbench-output/
