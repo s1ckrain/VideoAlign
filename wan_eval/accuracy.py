@@ -129,6 +129,14 @@ def compute_pointwise(
         raise ValueError("No overlapping video_id between reward_scores and human_pointwise.")
     for dim in ("VQ", "MQ", "TA"):
         merged[f"human_{dim}"] = _to_numeric(merged[f"human_{dim}"])
+    # `human_Overall` is *not* annotated directly (raters only score VQ/MQ/TA).
+    # We synthesize it as the 1:1:1 sum, matching VideoAlign's `Overall = VQ+MQ+TA`
+    # (inference.py:201). This is conceptually different from `composite`, which
+    # uses user-defined (vq_coef, mq_coef, ta_coef) weights.
+    if "human_Overall" not in merged.columns:
+        merged["human_Overall"] = (
+            merged["human_VQ"] + merged["human_MQ"] + merged["human_TA"]
+        )
     # Build composite columns for both sides.
     vq, mq, ta = coefs["vq_coef"], coefs["mq_coef"], coefs["ta_coef"]
     if "reward_composite" not in merged.columns:
@@ -200,7 +208,6 @@ def compute_pairwise(
     score_map = {row["video_id"]: row for _, row in reward_df.iterrows()}
     results: dict = {"n_pairs_total": int(len(pair_df)), "composite_coefs": coefs}
     label_map = {"A": 1, "a": 1, "B": -1, "b": -1, "same": 0, "tie": 0, "Same": 0}
-    vq, mq, ta = coefs["vq_coef"], coefs["mq_coef"], coefs["ta_coef"]
 
     def _per_dim(r_col: str, h_col: str) -> tuple[list[int], list[float], int]:
         labels: list[int] = []
@@ -219,7 +226,13 @@ def compute_pairwise(
             diffs.append(float(score_map[a_id][r_col]) - float(score_map[b_id][r_col]))
         return labels, diffs, skipped
 
-    def _composite() -> tuple[list[int], list[float], int]:
+    def _weighted(vq: float, mq: float, ta: float) -> tuple[list[int], list[float], int]:
+        """Generic weighted-sum pairwise computation.
+        - human label = sign(vq*lab_VQ + mq*lab_MQ + ta*lab_TA), each lab in {-1,0,+1}
+        - model diff  = vq*(VQ_A-VQ_B) + mq*(MQ_A-MQ_B) + ta*(TA_A-TA_B)
+        Skip the pair if any per-dim cell with non-zero weight is empty / unparseable.
+        Used for both `composite` (user coefs) and `Overall` (1:1:1).
+        """
         labels: list[int] = []
         diffs: list[float] = []
         skipped = 0
@@ -229,28 +242,28 @@ def compute_pairwise(
                 if a_id not in score_map or b_id not in score_map:
                     skipped += 1
                     continue
-                # Per-dim labels: skip the pair if any required dim is empty
-                # AND that dim has a non-zero coef.
                 lab_vq = lab_mq = lab_ta = 0
-                if vq != 0:
-                    raw = str(row.get("human_VQ", "")).strip()
-                    if raw in ("", "nan") or raw not in label_map:
-                        skipped += 1
+                bad = False
+                for w, key, target in (
+                    (vq, "human_VQ", "vq"),
+                    (mq, "human_MQ", "mq"),
+                    (ta, "human_TA", "ta"),
+                ):
+                    if w == 0:
                         continue
-                    lab_vq = label_map[raw]
-                if mq != 0:
-                    raw = str(row.get("human_MQ", "")).strip()
+                    raw = str(row.get(key, "")).strip()
                     if raw in ("", "nan") or raw not in label_map:
-                        skipped += 1
-                        continue
-                    lab_mq = label_map[raw]
-                if ta != 0:
-                    raw = str(row.get("human_TA", "")).strip()
-                    if raw in ("", "nan") or raw not in label_map:
-                        skipped += 1
-                        continue
-                    lab_ta = label_map[raw]
-                # Weighted human label, then sign() to get {-1, 0, +1}.
+                        bad = True
+                        break
+                    if target == "vq":
+                        lab_vq = label_map[raw]
+                    elif target == "mq":
+                        lab_mq = label_map[raw]
+                    else:
+                        lab_ta = label_map[raw]
+                if bad:
+                    skipped += 1
+                    continue
                 comp = vq * lab_vq + mq * lab_mq + ta * lab_ta
                 if abs(comp) < 1e-9:
                     human_label = 0
@@ -258,7 +271,6 @@ def compute_pairwise(
                     human_label = 1
                 else:
                     human_label = -1
-                # Weighted model diff.
                 a, b = score_map[a_id], score_map[b_id]
                 comp_diff = (
                     vq * (float(a["reward_VQ"]) - float(b["reward_VQ"]))
@@ -273,7 +285,15 @@ def compute_pairwise(
 
     for dim in dims:
         if dim == "composite":
-            labels, diffs, skipped = _composite()
+            # User-defined (vq_coef, mq_coef, ta_coef) → DanceGRPO training signal.
+            labels, diffs, skipped = _weighted(
+                coefs["vq_coef"], coefs["mq_coef"], coefs["ta_coef"]
+            )
+        elif dim == "Overall":
+            # `human_Overall` is not annotated by raters; derive it from VQ/MQ/TA
+            # via 1:1:1 sum, matching VideoAlign's `Overall = VQ + MQ + TA`
+            # (inference.py:201).
+            labels, diffs, skipped = _weighted(1.0, 1.0, 1.0)
         else:
             labels, diffs, skipped = _per_dim(f"reward_{dim}", f"human_{dim}")
 

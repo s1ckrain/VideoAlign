@@ -9,3 +9,7 @@ anno
 checkpoints/
 datasets/
 videogen-rewardbench-output/
+
+# wan_eval pipeline artifacts: generated videos, reward CSVs, human annotation
+# templates, accuracy_report.json. Code under wan_eval/ is still tracked.
+wan_eval/outputs/
